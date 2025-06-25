@@ -11,7 +11,7 @@ DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
 # Database Configuration
 BASE_DIR = Path(__file__).parent
-DATABASE_URL = f"sqlite:///{BASE_DIR}/persona_fit.db"
+DATABASE_URL = f"sqlite:///{BASE_DIR}/data/personafit.db"
 
 # Security Configuration
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")

@@ -16,10 +16,11 @@ from database import DatabaseManager
 from config import DATA_DIR, MODELS_DIR
 import joblib
 import os
+import typing
 
 class WorkoutRecommender:
     def __init__(self):
-        self.exercise_data = None
+        self.exercise_data: typing.Optional[pd.DataFrame] = None
         self.workout_model = None
         self.label_encoders = {}
         self.db = DatabaseManager()
@@ -121,7 +122,7 @@ class WorkoutRecommender:
             X = exercise_df[feature_cols].values
             y = np.random.randint(0, 2, len(exercise_df))  # Synthetic target
             
-            self.workout_model = RandomForestClassifier(n_estimators=50, random_state=42)
+            self.workout_model = RandomForestClassifier(n_estimators=100, random_state=42)
             self.workout_model.fit(X, y)
             
             # Save model
@@ -141,50 +142,48 @@ class WorkoutRecommender:
                 self.train_workout_model(self.exercise_data)
     
     def get_exercises_by_criteria(self, muscle_group=None, equipment=None, difficulty=None, category=None, limit=10):
-        """Filter exercises by criteria"""
+        """
+        Get exercises filtered by criteria
+        
+        Args:
+            muscle_group: Target muscle group(s) - can be string or list of strings
+            equipment: Available equipment
+            difficulty: Difficulty level
+            category: Exercise category
+            limit: Maximum number of exercises to return
+            
+        Returns:
+            List of exercise dictionaries
+        """
         if self.exercise_data is None:
             return []
-        
-        df = self.exercise_data.copy()
-        # Ensure df is a DataFrame
-        if isinstance(df, np.ndarray):
-            # Only convert if shape matches expected columns
-            expected_cols = ["name", "category", "muscle_group", "equipment", "difficulty", "instructions", "calories_per_minute"]
-            if df.ndim == 2 and df.shape[1] == len(expected_cols):
-                try:
-                    df = pd.DataFrame.from_records(df, columns=expected_cols)
-                except Exception:
-                    return []
-            else:
-                return []
-        if isinstance(df, np.ndarray):
-            return []
-        if not isinstance(df, pd.DataFrame):
-            return []
-        
+        assert isinstance(self.exercise_data, pd.DataFrame), "exercise_data must be a DataFrame at this point"
+        df = typing.cast(pd.DataFrame, self.exercise_data.copy())
+        # Flexible muscle group matching
         if muscle_group:
-            df = df[df['muscle_group'].astype(str).str.contains(muscle_group.lower(), na=False)]
-            if isinstance(df, np.ndarray) or not isinstance(df, pd.DataFrame):
-                return []
-        if equipment:
-            if equipment.lower() == 'none':
-                df = df[df['equipment'].astype(str).str.contains('bodyweight|none', na=False)]
+            if isinstance(muscle_group, list):
+                mask = df['muscle_group'].apply(lambda x: any(mg.lower() in str(x).lower() for mg in muscle_group))
+                df = df[mask]
             else:
-                df = df[df['equipment'].astype(str).str.contains(equipment.lower(), na=False)]
-            if isinstance(df, np.ndarray) or not isinstance(df, pd.DataFrame):
-                return []
+                df = df[df['muscle_group'].astype(str).str.contains(muscle_group.lower(), na=False)]
+        # Flexible equipment matching
+        if equipment:
+            df['equipment'] = df['equipment'].astype(str)
+            if equipment.lower() == 'none':
+                df = df[
+                    df['equipment'].isnull() |  # type: ignore
+                    df['equipment'].str.lower().isin(['', 'nan', 'none', 'bodyweight'])  # type: ignore
+                ]
+            else:
+                # Robust matching: check if any equipment in the list matches the user's selection
+                df = df[df['equipment'].apply(lambda eq: any(e.strip() == equipment.lower() for e in str(eq).lower().split(',')))]  # type: ignore
+        # Difficulty matching
         if difficulty:
-            df = df[df['difficulty'].astype(str).str.contains(difficulty.lower(), na=False)]
-            if isinstance(df, np.ndarray) or not isinstance(df, pd.DataFrame):
-                return []
+            df = df[df['difficulty'].astype(str).str.contains(difficulty.lower(), na=False)]  # type: ignore
+        # Category matching
         if category:
-            df = df[df['category'].astype(str).str.contains(category.lower(), na=False)]
-            if isinstance(df, np.ndarray) or not isinstance(df, pd.DataFrame):
-                return []
-        
-        if isinstance(df, np.ndarray) or not isinstance(df, pd.DataFrame):
-            return []
-        return df.head(limit).to_dict('records')
+            df = df[df['category'].astype(str).str.contains(category.lower(), na=False)]  # type: ignore
+        return df.head(limit).to_dict('records')  # type: ignore
     
     def calculate_workout_calories(self, exercises, duration_minutes):
         """Calculate estimated calories burned"""
@@ -203,7 +202,7 @@ class WorkoutRecommender:
                 muscle_group=muscle_group,
                 equipment=equipment_available,
                 difficulty=difficulty,
-                limit=2
+                limit=3
             )
             exercises.extend(muscle_exercises)
         
@@ -230,19 +229,16 @@ class WorkoutRecommender:
         
         return workout_plan
     
-    def log_workout_completion(self, user_id, workout_plan, actual_duration, difficulty_rating, notes=""):
+    def log_workout_completion(self, user_id, workout_plan, exercise_logs, difficulty_rating, notes=""):
         """Log completed workout"""
-        workout_log = {
-            'user_id': user_id,
-            'exercises': json.dumps([ex['name'] for ex in workout_plan['exercises']]),
-            'duration_minutes': actual_duration,
+        workout_logs = {
+            'exercises': json.dumps(exercise_logs),
             'difficulty_rating': difficulty_rating,
-            'estimated_calories': workout_plan['estimated_calories'],
+            'calories_burned': workout_plan['estimated_calories'],
             'notes': notes,
-            'completed_at': datetime.now()
+            'date': datetime.now()
         }
-        
-        self.db.log_workout(user_id, workout_log)
+        self.db.log_workout(user_id, workout_logs)
         return True
     
     def get_workout_history(self, user_id, days=30):
@@ -256,13 +252,15 @@ class WorkoutRecommender:
         if not workouts:
             return None
         
-        df = pd.DataFrame(workouts)
+        df = pd.DataFrame([w.__dict__ for w in workouts])
+        if '_sa_instance_state' in df.columns:
+            df = df.drop(columns=['_sa_instance_state'])
         
         analytics = {
             'total_workouts': len(df),
             'total_duration': df['duration_minutes'].sum(),
             'avg_duration': df['duration_minutes'].mean(),
-            'total_calories': df['estimated_calories'].sum(),
+            'total_calories': df['calories_burned'].sum(),
             'avg_difficulty': df['difficulty_rating'].mean(),
             'workout_frequency': len(df) / 13 if len(df) > 0 else 0,  # per week
             'recent_trend': 'improving' if df['difficulty_rating'].tail(5).mean() > df['difficulty_rating'].head(5).mean() else 'stable'
@@ -274,8 +272,9 @@ def render_workout_interface():
     """Render Streamlit workout interface"""
     st.header("🏋️ Workout Planner")
     
+    # Set default user_id if not present (remove authentication requirement)
     if 'user_id' not in st.session_state:
-        st.session_state.user_id = None
+        st.session_state.user_id = 1  # Default user ID
     
     recommender = WorkoutRecommender()
     user_id = st.session_state.user_id
@@ -339,28 +338,37 @@ def render_workout_interface():
     # Workout completion
     if 'current_workout' in st.session_state:
         st.subheader("Complete Workout")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            actual_duration = st.number_input("Actual Duration (minutes)", 
-                                            min_value=1, max_value=180, 
-                                            value=st.session_state.current_workout['duration_minutes'])
-        
-        with col2:
-            difficulty_rating = st.slider("How challenging was it? (1-10)", 1, 10, 5)
-        
+        exercise_logs = []
+        for i, exercise in enumerate(st.session_state.current_workout['exercises']):
+            st.markdown(f"**{exercise['name'].title()}** ({exercise['category'].title()})")
+            if exercise['category'].lower() == 'cardio':
+                duration = st.number_input(f"Duration (min) for {exercise['name']}", min_value=1, max_value=180, value=10, key=f"duration_{i}")
+                exercise_logs.append({
+                    "name": exercise['name'],
+                    "category": exercise['category'],
+                    "duration_minutes": duration
+                })
+            else:
+                sets = st.number_input(f"Sets for {exercise['name']}", min_value=1, max_value=20, value=3, key=f"sets_{i}")
+                reps = st.number_input(f"Reps per set for {exercise['name']}", min_value=1, max_value=100, value=10, key=f"reps_{i}")
+                weight = st.number_input(f"Weight (kg) for {exercise['name']}", min_value=0, max_value=500, value=0, key=f"weight_{i}")
+                exercise_logs.append({
+                    "name": exercise['name'],
+                    "category": exercise['category'],
+                    "sets": sets,
+                    "reps": reps,
+                    "weight": weight
+                })
+        difficulty_rating = st.slider("How challenging was it? (1-10)", 1, 10, 5)
         notes = st.text_area("Workout Notes (optional)")
-        
         if st.button("Log Workout Completion"):
             recommender.log_workout_completion(
                 user_id, 
                 st.session_state.current_workout,
-                actual_duration,
+                exercise_logs,
                 difficulty_rating,
                 notes
             )
-            
             st.success("Workout logged successfully!")
             del st.session_state.current_workout
             st.rerun()
@@ -379,7 +387,7 @@ def render_workout_interface():
         
         with col2:
             st.metric("Avg Duration", f"{analytics['avg_duration']:.0f} min")
-            st.metric("Workout Frequency", f"{analytics['workout_frequency']:.1f}/week")
+            st.metric("image.png", f"{analytics['workout_frequency']:.1f}/week")
         
         with col3:
             st.metric("Avg Difficulty", f"{analytics['avg_difficulty']:.1f}/10")
@@ -388,13 +396,19 @@ def render_workout_interface():
         # Workout history chart
         history = recommender.get_workout_history(user_id, days=30)
         if history:
-            df = pd.DataFrame(history)
-            df['completed_at'] = pd.to_datetime(df['completed_at'])
-            
-            fig = px.line(df, x='completed_at', y='duration_minutes', 
-                         title="Workout Duration Trend",
-                         labels={'completed_at': 'Date', 'duration_minutes': 'Duration (min)'})
-            st.plotly_chart(fig, use_container_width=True)
+            df = pd.DataFrame([w.__dict__ for w in history])
+            if '_sa_instance_state' in df.columns:
+                df = df.drop(columns=['_sa_instance_state'])
+            if 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date'])
+                fig = px.line(df, x='date', y='duration_minutes', 
+                             title="Workout Duration Trend",
+                             labels={'date': 'Date', 'duration_minutes': 'Duration (min)'})
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("No 'date' field found in workout history. Please check your data.")
+                st.write("Available columns:", df.columns.tolist())
+                st.dataframe(df)
     
     else:
         st.info("Complete your first workout to see analytics!")

@@ -9,7 +9,7 @@ from datetime import datetime as dt
 # Add project root to path
 sys.path.append(str(Path(__file__).parent))
 
-from auth import AuthManager, require_auth
+from auth import AuthManager, show_login_page
 from meal_recommender import show_meal_recommender
 from workout_recommender import render_workout_interface
 from health_prediction import render_health_prediction
@@ -254,61 +254,58 @@ def render_sidebar():
     with st.sidebar:
         st.image("https://via.placeholder.com/200x100/6366f1/ffffff?text=PersonaFit", width=200)
         
-        if 'user_id' in st.session_state:
-            st.success(f"👋 Welcome, {st.session_state.get('user_name', 'User')}!")
-            
-            # Navigation menu
-            st.markdown("### 📱 Navigation")
-            
-            if st.button("🏠 Dashboard", use_container_width=True):
-                st.session_state.current_page = 'dashboard'
-                st.rerun()
-            
-            if st.button("🍽️ Nutrition", use_container_width=True):
-                st.session_state.current_page = 'meals'
-                st.rerun()
-            
-            if st.button("🏋️ Workouts", use_container_width=True):
-                st.session_state.current_page = 'workouts'
-                st.rerun()
-            
-            if st.button("📊 Analytics", use_container_width=True):
-                st.session_state.current_page = 'analytics'
-                st.rerun()
-            
-            if st.button("🤖 AI Coach", use_container_width=True):
-                st.session_state.current_page = 'chat'
-                st.rerun()
-            
-            st.markdown("---")
-            
-            # Quick stats
-            db = DatabaseManager()
-            try:
-                user_id = st.session_state.user_id
-                recent_workouts = db.get_user_workout_history(user_id, days=7)
-                recent_meals = db.get_user_meal_history(user_id, days=7)
-                
-                st.markdown("### 📈 This Week")
-                st.metric("Workouts", len(recent_workouts))
-                st.metric("Meals Logged", len(recent_meals))
-                
-                if recent_workouts:
-                    avg_difficulty = sum(getattr(w, 'difficulty_rating', 0) or 0 for w in recent_workouts) / len(recent_workouts)
-                    st.metric("Avg Difficulty", f"{avg_difficulty:.1f}/10")
-            except:
-                pass
-            
-            st.markdown("---")
-            
-            # Logout button
-            if st.button("🚪 Logout", use_container_width=True):
-                for key in list(st.session_state.keys()):
-                    del st.session_state[key]
-                st.rerun()
+        # Always show welcome message (no login required)
+        st.success(f"👋 Welcome, {st.session_state.get('user_name', 'Demo User')}!")
         
-        else:
-            st.info("👤 Please log in to access all features")
+        # Navigation menu
+        st.markdown("### 📱 Navigation")
+        
+        if st.button("🏠 Dashboard", use_container_width=True):
+            st.session_state.current_page = 'dashboard'
+            st.rerun()
+        
+        if st.button("🍽️ Nutrition", use_container_width=True):
+            st.session_state.current_page = 'meals'
+            st.rerun()
+        
+        if st.button("🏋️ Workouts", use_container_width=True):
+            st.session_state.current_page = 'workouts'
+            st.rerun()
+        
+        if st.button("📊 Analytics", use_container_width=True):
+            st.session_state.current_page = 'analytics'
+            st.rerun()
+        
+        if st.button("🤖 AI Coach", use_container_width=True):
+            st.session_state.current_page = 'chat'
+            st.rerun()
+        
+        st.markdown("---")
+        
+        # Quick stats
+        db = DatabaseManager()
+        try:
+            user_id = st.session_state.user_id
+            recent_workouts = db.get_user_workout_history(user_id, days=7)
+            recent_meals = db.get_user_meal_history(user_id, days=7)
+            
+            st.markdown("### 📈 This Week")
+            st.metric("Workouts", len(recent_workouts))
+            st.metric("Meals Logged", len(recent_meals))
+            
+            if recent_workouts:
+                avg_difficulty = sum(getattr(w, 'difficulty_rating', 0) or 0 for w in recent_workouts) / len(recent_workouts)
+                st.metric("Avg Difficulty", f"{avg_difficulty:.1f}/10")
+        except:
+            pass
+        
+        st.markdown("---")
+        
+        # Reset button instead of logout
+        if st.button("🔄 Reset Session", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
 
 def main():
     """Main application function"""
@@ -316,15 +313,13 @@ def main():
     if 'current_page' not in st.session_state:
         st.session_state.current_page = 'dashboard'
     
+    # Set default user_id if not present (remove authentication requirement)
+    if 'user_id' not in st.session_state:
+        st.session_state.user_id = 1  # Default user ID
+        st.session_state.user_name = "Demo User"
+    
     # Render sidebar
     render_sidebar()
-    
-    # Check authentication
-    if 'user_id' not in st.session_state:
-        render_hero_section()
-        st.markdown("---")
-        require_auth(main)
-        return
     
     # Render current page
     page = st.session_state.current_page

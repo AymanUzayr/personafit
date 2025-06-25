@@ -162,14 +162,6 @@ def show_login_page():
                 else:
                     st.error("Please fill in all fields")
 
-def require_auth(func):
-    def wrapper(*args, **kwargs):
-        if not AuthManager().is_authenticated():
-            show_login_page()
-            return
-        return func(*args, **kwargs)
-    return wrapper
-
 def show_user_menu():
     auth_manager = AuthManager()
     user = auth_manager.get_current_user()

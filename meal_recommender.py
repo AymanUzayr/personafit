@@ -17,6 +17,7 @@ import plotly.graph_objects as go
 from database import DatabaseManager, FoodDatabase
 from config import DATA_DIR, MODELS_DIR, USDA_FOOD_DATA_URL, USDA_BRANDED_DATA_URL, FITNESS_GOALS, CALORIES_PER_GRAM
 import ast
+from auth import AuthManager
 
 class MealRecommender:
     def __init__(self):
@@ -27,48 +28,56 @@ class MealRecommender:
         self.load_or_create_models()
         
             
-    def process_usda_data(self):
+    def process_usda_data(self, force=False):
         """Process and clean USDA food data (no download, use local files)"""
-
-        # Load and process FNDDS data
-        fndds_df = pd.read_excel("fndds_nutrient_values.xlsx")  # type: ignore
-        
-        # Add source identifier
-        fndds_df['source'] = 'fndds'
-
-        # Select relevant columns (nutrients are already per 100g)
-        # Keep the existing nutrient columns from FNDDS dataset
-        
-        # Save processed data
         processed_file = DATA_DIR / "processed" / "fndds_foods.csv"
+        if processed_file.exists() and not force:
+            return pd.read_csv(processed_file)
+        fndds_df = pd.read_excel("fndds_nutrient_values.xlsx", header=0)
+        column_mapping = {
+            'Food code': 'fdc_id',
+            'Main food description': 'description',
+            'WWEIA Category description': 'food_category',
+            'Energy (kcal)': 'calories_per_100g',
+            'Protein (g)': 'protein_per_100g',
+            'Carbohydrate (g)': 'carbs_per_100g',
+            'Total Fat (g)': 'fat_per_100g',
+            'Fiber, total dietary (g)': 'fiber_per_100g',
+            'Sugars, total (g)': 'sugar_per_100g',
+            'Sodium (mg)': 'sodium_per_100g'
+        }
+        fndds_df = fndds_df.rename(columns=column_mapping)
+        fndds_df['brand_name'] = ''
+        fndds_df['ingredients'] = ''
+        fndds_df['source'] = 'fndds'
         processed_file.parent.mkdir(exist_ok=True)
         fndds_df.to_csv(processed_file, index=False)
-
         return fndds_df
 
     def load_food_database(self):
         """Load food database from processed file or create new one"""
         processed_file = DATA_DIR / "processed" / "fndds_foods.csv"
-        
         if processed_file.exists():
-            return pd.read_csv(processed_file)
+            food_df = pd.read_csv(processed_file)
+            # Ensure correct column names
+            if 'description' not in food_df.columns and 'Main food description' in food_df.columns:
+                food_df = self.process_usda_data(force=True)
+            return food_df
         else:
             return self.process_usda_data()
 
     def create_food_features(self, food_df):
         """Create TF-IDF features from food descriptions"""
-        # Use the actual description column from FNDDS
-        food_df['combined_text'] = food_df['Main food description'].fillna('')
-        
+        if 'description' not in food_df.columns and 'Main food description' in food_df.columns:
+            food_df['description'] = food_df['Main food description']
+        food_df['combined_text'] = food_df['description'].fillna('')
         # Create TF-IDF features
         self.tfidf_vectorizer = TfidfVectorizer(
             max_features=1000,
             stop_words='english',
             ngram_range=(1, 2)
         )
-        
         self.food_features = self.tfidf_vectorizer.fit_transform(food_df['combined_text'])
-        
         # Save vectorizer
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         import joblib
@@ -77,29 +86,29 @@ class MealRecommender:
 
     def train_nutrition_model(self, food_df):
         """Train model to predict nutritional satisfaction"""
-        # Create features using actual FNDDS nutrient columns
+        # Create features using renamed nutrient columns
         features = []
         
         for _, row in food_df.iterrows():
             feature_vector = [
-                row['Energy (kcal)'],
-                row['Protein (g)'],
-                row['Carbohydrate, by difference (g)'],
-                row['Total lipid (fat) (g)'],
-                row['Fiber, total dietary (g)'],
-                row['Protein (g)'] / max(row['Energy (kcal)'], 1),  # Protein ratio
-                row['Fiber, total dietary (g)'] / max(row['Carbohydrate, by difference (g)'], 1),  # Fiber ratio
-                row['Sodium, Na (mg)']
+                row['calories_per_100g'],
+                row['protein_per_100g'],
+                row['carbs_per_100g'],
+                row['fat_per_100g'],
+                row['fiber_per_100g'],
+                row['protein_per_100g'] / max(row['calories_per_100g'], 1),  # Protein ratio
+                row['fiber_per_100g'] / max(row['carbs_per_100g'], 1),  # Fiber ratio
+                row['sodium_per_100g']
             ]
             features.append(feature_vector)
         
         X = np.array(features)
         
-        # Create nutritional quality score using actual nutrients
-        y = (food_df['Protein (g)'] * 0.3 + 
-            food_df['Fiber, total dietary (g)'] * 0.3 + 
-            (100 - food_df['Sodium, Na (mg)'] / 20) * 0.2 +
-            (500 - food_df['Energy (kcal)']) / 10 * 0.2)
+        # Create nutritional quality score using renamed nutrients
+        y = (food_df['protein_per_100g'] * 0.3 + 
+            food_df['fiber_per_100g'] * 0.3 + 
+            (100 - food_df['sodium_per_100g'] / 20) * 0.2 +
+            (500 - food_df['calories_per_100g']) / 10 * 0.2)
         
         # Train Random Forest model
         self.nutrition_model = RandomForestRegressor(n_estimators=100, random_state=42)
@@ -352,13 +361,23 @@ def show_meal_recommender():
     recommender = st.session_state.meal_recommender
     
     # Get current user
-    from auth import AuthManager
     auth_manager = AuthManager()
     user = auth_manager.get_current_user()
-    
+
     if not user:
-        st.error("Please login to access meal recommendations")
-        return
+        # Provide a default guest user
+        class GuestUser:
+            age = 30
+            height = 170
+            weight = 70
+            gender = 'male'
+            activity_level = 'moderate'
+            fitness_goal = 'maintenance'
+            dietary_preferences = '[]'
+            allergies = '[]'
+            id = 0
+        user = GuestUser()
+    # No info or error message; guest has full access
     
     # Check if user profile is complete
     if not all([user.age, user.height, user.weight, user.activity_level, user.fitness_goal]):
@@ -949,9 +968,6 @@ def show_meal_recommender():
             except Exception as e:
                 st.error(f"Error generating analytics: {e}")
 
-if __name__ == "__main__":
-    show_meal_recommender()
-
 # Streamlit UI enhancements and final integration
 def show_nutrition_dashboard():
     """Enhanced nutrition dashboard with more interactive features"""
@@ -1045,12 +1061,3 @@ def initialize_ml_models():
         return tfidf_vectorizer, nutrition_model
     except:
         return None, None
-
-# Main execution with error handling
-if __name__ == "__main__":
-    try:
-        add_custom_css()
-        show_meal_recommender()
-    except Exception as e:
-        st.error(f"Application error: {e}")
-        st.info("Please refresh the page or contact support if the problem persists.")

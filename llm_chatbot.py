@@ -10,24 +10,38 @@ import os
 
 class FitnessBot:
     def __init__(self):
+        """Initialize the fitness chatbot"""
         self.db = DatabaseManager()
+        
+        # System prompt for the AI
         self.system_prompt = ("""
-You are PersonaFit AI, a knowledgeable fitness and nutrition coach. 
-You provide helpful, encouraging, and scientifically-backed advice about:
-- Exercise techniques and workout planning
-- Nutrition and meal planning
+You are PersonaFit, a friendly and knowledgeable fitness AI coach. Your role is to:
+
+- Provide evidence-based fitness and nutrition advice
+- Offer personalized workout and meal recommendations
+- Help users stay motivated and track their progress
+- Answer questions about exercise form, nutrition, and wellness
+- Encourage healthy habits and sustainable lifestyle changes
+
+Key areas of expertise:
+- Exercise programming and workout design
+- Nutrition fundamentals and meal planning
 - Recovery and injury prevention
-- Motivation and goal setting
+- Goal setting and progress tracking
+- Motivation and mindset
 
 Keep responses concise but informative. Always prioritize safety and recommend consulting 
 healthcare professionals for medical concerns. Be encouraging and supportive.
         """)
 
-        # Initialize GroqCloud client
-        if 'groqcloud_api_key' in st.secrets:
-            self.client = Groq(api_key= os.getenv('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'))
-        else:
-            self.client = None
+        # Initialize GroqCloud client (optional)
+        self.client = None
+        try:
+            if 'groqcloud_api_key' in st.secrets:
+                self.client = Groq(api_key=st.secrets['groqcloud_api_key'])
+        except:
+            # If secrets are not available, continue without API
+            pass
 
     def get_daily_motivation(self, user_name=None, user_goals=None):
         """Generate daily motivation message"""
@@ -65,9 +79,10 @@ healthcare professionals for medical concerns. Be encouraging and supportive.
             return self.get_daily_motivation()
 
     def chat_with_ai(self, user_message, user_id=None, chat_history=None):
-        """Chat with GroqCloud AI assistant"""
+        """Chat with GroqCloud AI assistant or provide fallback responses"""
         if not self.client:
-            return "I'm currently unavailable. Please configure the GroqCloud API key to chat with me!"
+            # Provide intelligent fallback responses
+            return self.get_fallback_response(user_message)
 
         # Build context
         context = []
@@ -106,6 +121,53 @@ healthcare professionals for medical concerns. Be encouraging and supportive.
                 return "Sorry, I couldn't generate a response at this time."
         except Exception as e:
             return f"Sorry, I'm having trouble responding right now. Error: {e}"
+
+    def get_fallback_response(self, user_message):
+        """Provide intelligent fallback responses when API is not available"""
+        message_lower = user_message.lower()
+        
+        # Workout-related responses
+        if any(word in message_lower for word in ['workout', 'exercise', 'training', 'gym']):
+            if 'how often' in message_lower:
+                return "For optimal results, aim for 3-5 workouts per week. Beginners can start with 3 days, while more experienced individuals can handle 4-5 days. Remember to include rest days for recovery!"
+            elif 'sets' in message_lower or 'reps' in message_lower:
+                return "For muscle growth: 3-4 sets of 8-12 reps. For strength: 3-5 sets of 1-6 reps. For endurance: 2-3 sets of 15+ reps. Always prioritize proper form over weight!"
+            elif 'cardio' in message_lower:
+                return "Cardio is great for heart health! Aim for 150 minutes of moderate cardio or 75 minutes of vigorous cardio per week. You can split this into 30-minute sessions 5 days a week."
+            else:
+                return "Great question about workouts! A balanced routine should include strength training, cardio, and flexibility work. Start with compound movements like squats, deadlifts, and push-ups. Remember to warm up properly and listen to your body!"
+        
+        # Nutrition-related responses
+        elif any(word in message_lower for word in ['eat', 'food', 'nutrition', 'diet', 'meal']):
+            if 'before workout' in message_lower:
+                return "Eat a light meal 2-3 hours before working out, or a small snack 30-60 minutes before. Focus on carbs for energy and some protein. Examples: banana with peanut butter, Greek yogurt with berries, or a protein smoothie."
+            elif 'protein' in message_lower:
+                return "Protein is essential for muscle repair! Aim for 0.8-1.2g of protein per pound of body weight daily. Good sources include lean meats, fish, eggs, dairy, legumes, and plant-based proteins."
+            elif 'weight loss' in message_lower:
+                return "Sustainable weight loss comes from a calorie deficit (burning more than you consume) combined with regular exercise. Focus on whole foods, adequate protein, and don't cut calories too drastically. Aim for 1-2 pounds per week."
+            else:
+                return "Nutrition is key to your fitness journey! Focus on whole foods, plenty of vegetables, lean proteins, and healthy fats. Stay hydrated and try to eat balanced meals throughout the day. Remember, consistency beats perfection!"
+        
+        # Recovery-related responses
+        elif any(word in message_lower for word in ['recovery', 'rest', 'sleep', 'sore']):
+            if 'sleep' in message_lower:
+                return "Sleep is crucial for recovery and muscle growth! Aim for 7-9 hours of quality sleep per night. Your body repairs and builds muscle during deep sleep, so prioritize good sleep hygiene."
+            elif 'sore' in message_lower:
+                return "Muscle soreness is normal, especially when starting or increasing intensity. Gentle stretching, light activity, and proper nutrition can help. If soreness lasts more than 3-4 days, consider taking an extra rest day."
+            else:
+                return "Recovery is just as important as training! Include rest days in your routine, prioritize sleep, stay hydrated, and consider activities like stretching, foam rolling, or light walking on rest days."
+        
+        # Motivation-related responses
+        elif any(word in message_lower for word in ['motivation', 'motivated', 'tired', 'hard']):
+            return "Remember why you started! Progress takes time, and every workout counts. Focus on consistency over perfection. Celebrate small wins, and remember that showing up is half the battle. You're stronger than you think! 💪"
+        
+        # General fitness questions
+        elif any(word in message_lower for word in ['goal', 'plan', 'routine', 'program']):
+            return "Setting clear, achievable goals is important! Start with specific, measurable goals like 'work out 3 times per week' or 'run a 5K in 3 months.' Break big goals into smaller milestones and track your progress!"
+        
+        # Default response
+        else:
+            return "Thanks for your question! I'm here to help with fitness, nutrition, and wellness advice. Feel free to ask about workouts, meal planning, recovery, or motivation. Remember, consistency and patience are key to long-term success! 🌟"
 
     def get_quick_tips(self, category):
         tips = {

@@ -42,4 +42,6 @@ man/
 .share/
 .jupyter/
 .man/
-personafit/wearable-device-dataset-from-induced-stress-and-structured-exercise-sessions-1.0.0/
+etc/*
+# Ignore all files in the share directory
+share/*
