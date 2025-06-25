@@ -710,6 +710,57 @@ def render_health_prediction():
     """Main Streamlit interface"""
     st.header("📊 Health Analytics & Predictions")
     
+    # Custom CSS for card styling
+    st.markdown("""
+    <style>
+    .pf-card {
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 2px 12px rgba(99,102,241,0.07);
+        padding: 2rem 1.5rem 1.5rem 1.5rem;
+        margin-bottom: 2rem;
+        border: 1px solid #f0f2f6;
+    }
+    .pf-card-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 0.2rem;
+        display: flex;
+        align-items: center;
+    }
+    .pf-card-subtitle {
+        color: #6b7280;
+        font-size: 1rem;
+        margin-bottom: 1rem;
+    }
+    .pf-badge {
+        display: inline-block;
+        background: #e0e7ff;
+        color: #3730a3;
+        border-radius: 8px;
+        padding: 0.2rem 0.7rem;
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-left: 0.5rem;
+    }
+    .pf-list {
+        margin: 0.5rem 0 0.5rem 0.5rem;
+        padding-left: 1rem;
+    }
+    .pf-list li {
+        margin-bottom: 0.3rem;
+    }
+    .pf-card-footer {
+        display: flex;
+        align-items: center;
+        color: #6b7280;
+        font-size: 0.95rem;
+        margin-top: 1rem;
+        gap: 1.5rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     # Set default user_id if not present (remove authentication requirement)
     if 'user_id' not in st.session_state:
         st.session_state.user_id = 1  # Default user ID
@@ -720,41 +771,80 @@ def render_health_prediction():
     tab1, tab2 = st.tabs(["🎯 Progress Forecast", "🔋 Recovery & Fatigue"])
     
     with tab1:
-        st.subheader("Progress Forecast")
+        # --- Weekly Workout Analysis Card ---
+        workouts = predictor.get_user_workouts(user_id, 14)
+        if workouts:
+            df = pd.DataFrame(workouts)
+            df['completed_at'] = pd.to_datetime(df['completed_at'])
+            df['date'] = df['completed_at'].dt.strftime('%b %d')
+            df = df.sort_values('completed_at')
+            # Group by date
+            # Robust calories column handling
+            if 'calories_burned' in df.columns:
+                calories_col = 'calories_burned'
+            elif 'estimated_calories' in df.columns:
+                calories_col = 'estimated_calories'
+            else:
+                calories_col = None
+
+            agg_dict = {'difficulty_rating': 'mean', 'duration_minutes': 'sum'}
+            if calories_col:
+                agg_dict[calories_col] = 'sum'
+
+            daily = df.groupby('date').agg(agg_dict).reset_index()
+
+            # For plotting, always create a 'calories_burned' column (fill with zeros if missing)
+            if calories_col and calories_col != 'calories_burned':
+                daily['calories_burned'] = daily[calories_col]
+            elif not calories_col:
+                daily['calories_burned'] = 0
+            # Plotly grouped bar chart with dual y-axes
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=daily['date'], y=daily['calories_burned'],
+                name='Calories Burned', marker_color='#3b82f6', yaxis='y1',
+                width=0.35
+            ))
+            fig.add_trace(go.Bar(
+                x=daily['date'], y=daily['difficulty_rating'],
+                name='Intensity', marker_color='#10b981', yaxis='y2',
+                width=0.35, offset=0.2
+            ))
+            fig.update_layout(
+                barmode='group',
+                font=dict(color="#FAFAFA"),
+                yaxis=dict(title='Calories Burned', side='left', showgrid=False, zeroline=False, color="#FAFAFA"),
+                yaxis2=dict(title='Intensity', side='right', overlaying='y', showgrid=False, zeroline=False, range=[0,10], color="#FAFAFA"),
+                xaxis=dict(color="#FAFAFA"),
+                legend=dict(x=0.01, y=1.15, orientation='h', font=dict(color="#FAFAFA")),
+                margin=dict(l=20, r=20, t=40, b=20),
+                height=340,
+                plot_bgcolor='#18191A',
+                paper_bgcolor='#18191A',
+                title=None
+            )
+            st.markdown('<div class="pf-card">', unsafe_allow_html=True)
+            st.markdown('<div class="pf-card-title">📈 Weekly Workout Analysis</div>', unsafe_allow_html=True)
+            st.markdown('<div class="pf-card-subtitle">Your workout intensity and calories burned</div>', unsafe_allow_html=True)
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.info("Complete some workouts to see your weekly analysis.")
         
+        # --- Next Workout (Progress Forecast) Card ---
         forecast = predictor.get_progress_forecast(user_id)
-        
         if forecast:
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                trend_color = {'improving': '🟢', 'stable': '🟡', 'declining': '🔴'}
-                st.metric("Trend", f"{trend_color[forecast['trend']]} {forecast['trend'].title()}")
-            
-            with col2:
-                st.metric("Recent Avg", f"{forecast['recent_avg']:.1f}/10")
-            
-            with col3:
-                if forecast['predicted_next']:
-                    st.metric("Next Predicted", f"{forecast['predicted_next']:.1f}/10")
-                else:
-                    st.metric("Next Predicted", "N/A")
-            
-            st.info(f"💡 **Recommendation:** {forecast['recommendation']}")
-            
-            # Progress visualization
-            workouts = predictor.get_user_workouts(user_id, 30)
-            if workouts:
-                df = pd.DataFrame(workouts)
-                df['completed_at'] = pd.to_datetime(df['completed_at'])
-                df['difficulty_rating'] = pd.to_numeric(df['difficulty_rating'])
-                
-                fig = px.line(df.sort_values('completed_at'), 
-                             x='completed_at', y='difficulty_rating',
-                             title="30-Day Progress Trend",
-                             markers=True)
-                fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
+            # Use LLM chatbot to generate next workout suggestion
+            from llm_chatbot import FitnessBot
+            bot = FitnessBot()
+            last_workouts = predictor.get_user_workouts(user_id, 7)
+            llm_next_workout = bot.generate_next_workout(user_id, last_workouts)  # To be implemented in llm_chatbot.py
+            # Card HTML (no white box)
+            st.markdown('<div class="pf-card" style="max-width:340px;display:inline-block;vertical-align:top;">', unsafe_allow_html=True)
+            st.markdown('<div class="pf-card-title">⚡ Next Workout</div>', unsafe_allow_html=True)
+            st.markdown('<div class="pf-card-subtitle">Recommended for tomorrow</div>', unsafe_allow_html=True)
+            st.markdown(llm_next_workout, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("Complete at least 5 workouts to see progress forecasting.")
     

@@ -109,7 +109,7 @@ healthcare professionals for medical concerns. Be encouraging and supportive.
 
         try:
             response = self.client.chat.completions.create(
-                model="groq-1.0-chat",
+                model="llama-3.3-70b-versatile",
                 messages=context,
                 max_tokens=300,
                 temperature=0.7
@@ -175,9 +175,42 @@ healthcare professionals for medical concerns. Be encouraging and supportive.
         }
         return random.choice(tips.get(category, tips['motivation']))
 
+    def generate_next_workout(self, user_id, workout_history):
+        """
+        Generate a personalized next workout suggestion using the LLM.
+        """
+        prompt = (
+            "Based on the user's recent workout history, suggest a specific next workout. "
+            "Include workout type, focus, intensity, and 3-5 exercises with sets/reps or duration. "
+            "Be concise and motivating. Here is the recent workout log:\n"
+            f"{workout_history}\n"
+            "Format the response as HTML for display in a card."
+        )
+        if self.client:
+            response = self.chat_with_ai(prompt, user_id)
+            return response
+        else:
+            # Fallback: static example
+            return (
+                "<b>Strength</b> Upper body with emphasis on Back "
+                "<span class='pf-badge'>Moderate to high</span>"
+                "<div style='margin-top:1rem;font-weight:600;'>Suggested Exercises:</div>"
+                "<ol class='pf-list'>"
+                "<li>Deadlifts - 4 sets of 8 reps</li>"
+                "<li>Bench Press - 3 sets of 10 reps</li>"
+                "<li>Pull-ups - 3 sets to failure</li>"
+                "</ol>"
+                "<div class='pf-card-footer'>📅 Tomorrow &nbsp; ⚡ 60 min</div>"
+            )
 
 def render_chatbot_interface():
     """Render Streamlit chatbot interface"""
+    # --- Fix input clearing bug: check flag before any widgets ---
+    if st.session_state.get("clear_input", False):
+        st.session_state.chat_input = ""
+        st.session_state.clear_input = False
+        st.rerun()
+
     st.header("🤖 PersonaFit AI Coach")
     
     bot = FitnessBot()
@@ -233,16 +266,13 @@ def render_chatbot_interface():
     if st.button("Send", type="primary") and user_input:
         # Add user message to history
         st.session_state.chat_history.append({"role": "user", "content": user_input})
-        
         # Get AI response
         user_id = st.session_state.get('user_id')
         response = bot.chat_with_ai(user_input, user_id, st.session_state.chat_history)
-        
         # Add AI response to history
         st.session_state.chat_history.append({"role": "assistant", "content": response})
-        
-        # Clear input and rerun to show new messages
-        st.session_state.chat_input = ""
+        # Set a flag to clear input and rerun
+        st.session_state.clear_input = True
         st.rerun()
     
     # Clear chat button

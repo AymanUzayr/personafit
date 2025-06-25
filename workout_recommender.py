@@ -349,9 +349,13 @@ def render_workout_interface():
                     "duration_minutes": duration
                 })
             else:
-                sets = st.number_input(f"Sets for {exercise['name']}", min_value=1, max_value=20, value=3, key=f"sets_{i}")
-                reps = st.number_input(f"Reps per set for {exercise['name']}", min_value=1, max_value=100, value=10, key=f"reps_{i}")
-                weight = st.number_input(f"Weight (kg) for {exercise['name']}", min_value=0, max_value=500, value=0, key=f"weight_{i}")
+                col_sets, col_reps, col_weight = st.columns([1, 1, 2])
+                with col_sets:
+                    sets = st.number_input("Sets", min_value=1, max_value=20, value=3, step=1, key=f"sets_{i}", format="%d")
+                with col_reps:
+                    reps = st.number_input("Reps", min_value=1, max_value=100, value=10, step=1, key=f"reps_{i}", format="%d")
+                with col_weight:
+                    weight = st.number_input("Weight (kg)", min_value=0, max_value=500, value=0, step=1, key=f"weight_{i}", format="%d")
                 exercise_logs.append({
                     "name": exercise['name'],
                     "category": exercise['category'],

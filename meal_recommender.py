@@ -351,7 +351,30 @@ class MealRecommender:
 
 def show_meal_recommender():
     """Display meal recommender interface"""
-    st.title("🍽️ Personalized Meal Planner")
+    # --- Top Row: Title and Demo User Profile Dropdown ---
+    col_title, col_profile = st.columns([3, 2])
+    with col_title:
+        st.title("🍽️ Personalized Meal Planner")
+    with col_profile:
+        with st.expander("Demo User Profile", expanded=False):
+            if 'demo_user' not in st.session_state:
+                st.session_state.demo_user = {
+                    'age': 30,
+                    'height': 170,
+                    'weight': 70,
+                    'gender': 'male',
+                    'activity_level': 'moderate',
+                    'fitness_goal': 'maintenance',
+                    'dietary_preferences': '[]',
+                    'allergies': '[]',
+                    'id': 0
+                }
+            st.session_state.demo_user['age'] = st.number_input("Age", min_value=10, max_value=100, value=st.session_state.demo_user['age'])
+            st.session_state.demo_user['height'] = st.number_input("Height (cm)", min_value=100, max_value=250, value=st.session_state.demo_user['height'])
+            st.session_state.demo_user['weight'] = st.number_input("Weight (kg)", min_value=30, max_value=200, value=st.session_state.demo_user['weight'])
+            st.session_state.demo_user['gender'] = st.selectbox("Gender", ['male', 'female', 'other'], index=['male', 'female', 'other'].index(st.session_state.demo_user['gender']))
+            st.session_state.demo_user['activity_level'] = st.selectbox("Activity Level", ['sedentary', 'lightly_active', 'moderate', 'very_active', 'extremely_active'], index=['sedentary', 'lightly_active', 'moderate', 'very_active', 'extremely_active'].index(st.session_state.demo_user['activity_level']))
+            st.session_state.demo_user['fitness_goal'] = st.selectbox("Fitness Goal", ['maintenance', 'weight_loss', 'muscle_gain', 'endurance'], index=['maintenance', 'weight_loss', 'muscle_gain', 'endurance'].index(st.session_state.demo_user['fitness_goal']))
     
     # Initialize recommender
     if 'meal_recommender' not in st.session_state:
@@ -365,18 +388,19 @@ def show_meal_recommender():
     user = auth_manager.get_current_user()
 
     if not user:
-        # Provide a default guest user
+        # Provide a default guest user, using editable sidebar values
         class GuestUser:
-            age = 30
-            height = 170
-            weight = 70
-            gender = 'male'
-            activity_level = 'moderate'
-            fitness_goal = 'maintenance'
-            dietary_preferences = '[]'
-            allergies = '[]'
-            id = 0
-        user = GuestUser()
+            def __init__(self, data):
+                self.age = data['age']
+                self.height = data['height']
+                self.weight = data['weight']
+                self.gender = data['gender']
+                self.activity_level = data['activity_level']
+                self.fitness_goal = data['fitness_goal']
+                self.dietary_preferences = data.get('dietary_preferences', '[]')
+                self.allergies = data.get('allergies', '[]')
+                self.id = data.get('id', 0)
+        user = GuestUser(st.session_state.demo_user)
     # No info or error message; guest has full access
     
     # Check if user profile is complete
