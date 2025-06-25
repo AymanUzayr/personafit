@@ -22,14 +22,7 @@ Lib/
 Scripts/
 pyvenv.cfg
 venv/
-etc/
-models/
-data/
-logs/
-results/
-share/
-jupyter/
-man/
+
 .env
 .DS_Store
 .gitignore
@@ -45,3 +38,4 @@ man/
 etc/*
 # Ignore all files in the share directory
 share/*
+.streamlit/* 
