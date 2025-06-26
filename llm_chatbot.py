@@ -169,11 +169,11 @@ healthcare professionals for medical concerns. Be encouraging and supportive.
         else:
             return "Thanks for your question! I'm here to help with fitness, nutrition, and wellness advice. Feel free to ask about workouts, meal planning, recovery, or motivation. Remember, consistency and patience are key to long-term success! 🌟"
 
-    def get_quick_tips(self, category):
-        tips = {
-            'workout': [...], 'nutrition': [...], 'recovery': [...], 'motivation': [...]
-        }
-        return random.choice(tips.get(category, tips['motivation']))
+    # def get_quick_tips(self, category):
+    #     tips = {
+    #         'workout': [...], 'nutrition': [...], 'recovery': [...], 'motivation': [...]
+    #     }
+    #     return random.choice(tips.get(category, tips['motivation']))
 
     def generate_next_workout(self, user_id, workout_history):
         """
@@ -227,17 +227,17 @@ def render_chatbot_interface():
     
     st.success(motivation)
     
-    # Quick tips section
-    st.subheader("💡 Quick Tips")
+    # # Quick tips section
+    # st.subheader("💡 Quick Tips")
     
-    tip_category = st.selectbox(
-        "Choose a category:",
-        ['workout', 'nutrition', 'recovery', 'motivation']
-    )
+    # tip_category = st.selectbox(
+    #     "Choose a category:",
+    #     ['workout', 'nutrition', 'recovery', 'motivation']
+    # )
     
-    if st.button("Get Tip"):
-        tip = bot.get_quick_tips(tip_category)
-        st.info(tip)
+    # if st.button("Get Tip"):
+    #     tip = bot.get_quick_tips(tip_category)
+    #     st.info(tip)
     
     # Chat interface
     st.subheader("💬 Chat with PersonaFit AI")
